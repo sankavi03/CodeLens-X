@@ -1,10 +1,8 @@
-package com.codelensx.backend.explorer.service;
+package com.codelensx.backend.filecontent.service;
 
 import com.codelensx.backend.exception.ApiException;
-import com.codelensx.backend.explorer.dto.ExplorerFileNodeResponseDto;
-import com.codelensx.backend.explorer.dto.ExplorerFolderNodeResponseDto;
-import com.codelensx.backend.explorer.dto.ExplorerTreeResponseDto;
-import com.codelensx.backend.explorer.mapper.ProjectExplorerMapper;
+import com.codelensx.backend.filecontent.dto.FileContentResponseDto;
+import com.codelensx.backend.filecontent.mapper.FileContentMapper;
 import com.codelensx.backend.parser.cache.ProjectTreeCache;
 import com.codelensx.backend.parser.model.NodeType;
 import com.codelensx.backend.parser.model.ProjectTree;
@@ -20,37 +18,37 @@ import java.util.UUID;
 
 @Service
 @RequiredArgsConstructor
-public class ProjectExplorerService {
+public class FileContentService {
 
     private final WorkspaceAccessValidator workspaceAccessValidator;
     private final ProjectTreeCache projectTreeCache;
-    private final ProjectExplorerMapper projectExplorerMapper;
+    private final FileContentMapper fileContentMapper;
+    private final SecureFileReader secureFileReader;
 
     @Transactional(readOnly = true)
-    public ExplorerTreeResponseDto getProjectTree(UUID workspaceId, String username) {
-        workspaceAccessValidator.validateAccess(workspaceId, username);
-        ProjectTree projectTree = getCachedTree(workspaceId);
-        return projectExplorerMapper.toTreeResponse(projectTree);
-    }
-
-    @Transactional(readOnly = true)
-    public Object getProjectNode(UUID workspaceId, String path, String username) {
+    public FileContentResponseDto getFileContent(UUID workspaceId, String path, String username) {
         workspaceAccessValidator.validateAccess(workspaceId, username);
         ProjectTree projectTree = getCachedTree(workspaceId);
 
+        ProjectTreePathUtils.validateNotAbsolute(path);
         String normalizedPath = ProjectTreePathUtils.normalizePath(path);
         ProjectTreePathUtils.validatePathFormat(normalizedPath);
 
+        if (normalizedPath.isEmpty()) {
+            throw new ApiException("Invalid path: file path is required", HttpStatus.BAD_REQUEST);
+        }
+
         ProjectTreeNode node = ProjectTreePathUtils.findNodeByPath(projectTree.getRoot(), normalizedPath);
         if (node == null) {
-            throw new ApiException("Invalid path: node not found", HttpStatus.BAD_REQUEST);
+            throw new ApiException("File not found", HttpStatus.NOT_FOUND);
         }
 
         if (node.getType() == NodeType.FOLDER) {
-            return projectExplorerMapper.toFolderNodeResponse(node);
+            throw new ApiException("Invalid path: requested path is a folder, not a file", HttpStatus.BAD_REQUEST);
         }
 
-        return projectExplorerMapper.toFileNodeResponse(node);
+        SecureFileReader.ReadResult readResult = secureFileReader.readTextFile(projectTree.getRootPath(), node);
+        return fileContentMapper.toResponse(workspaceId, node, readResult.content(), readResult.sizeBytes());
     }
 
     private ProjectTree getCachedTree(UUID workspaceId) {
