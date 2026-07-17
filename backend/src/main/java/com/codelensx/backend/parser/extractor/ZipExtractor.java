@@ -39,6 +39,7 @@ public class ZipExtractor {
                 zipInputStream.closeEntry();
             }
         } catch (IOException e) {
+            log.error("Failed to extract ZIP archive", e);
             throw new ParserException("Failed to extract ZIP archive: " + zipFilePath.getFileName(), e);
         }
 
@@ -47,13 +48,15 @@ public class ZipExtractor {
     }
 
     private void extractEntry(ZipEntry entry, ZipInputStream zipInputStream, Path extractDir) throws IOException {
-        Path targetPath = extractDir.resolve(entry.getName()).normalize();
+        String entryName = entry.getName().replace('\\', '/');
+        Path targetPath = extractDir.resolve(entryName).normalize();
 
         if (!targetPath.startsWith(extractDir)) {
             throw new ParserException("Zip Slip attempt detected: " + entry.getName());
         }
 
-        if (entry.isDirectory()) {
+        boolean isDir = entry.isDirectory() || entryName.endsWith("/");
+        if (isDir) {
             Files.createDirectories(targetPath);
             return;
         }

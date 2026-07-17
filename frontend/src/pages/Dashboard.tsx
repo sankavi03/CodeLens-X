@@ -92,6 +92,7 @@ const Dashboard: React.FC = () => {
       try {
         await deleteWorkspace(id);
       } catch (err) {
+        console.error("Failed to delete workspace:", err);
         alert('Failed to delete workspace.');
       }
     }

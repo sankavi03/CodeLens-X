@@ -40,8 +40,9 @@ public class GeneratorController {
     @PostMapping("/architecture")
     public ResponseEntity<Map<String, String>> generateArchitecture(
             @PathVariable UUID workspaceId,
+            @RequestParam(value = "type", defaultValue = "flowchart") String type,
             Principal principal) {
-        String architecture = architectureSummaryGeneratorService.generateArchitectureSummary(workspaceId, principal.getName());
+        String architecture = architectureSummaryGeneratorService.generateArchitectureSummary(workspaceId, principal.getName(), type);
         return ResponseEntity.ok(Map.of("architecture", architecture));
     }
 }

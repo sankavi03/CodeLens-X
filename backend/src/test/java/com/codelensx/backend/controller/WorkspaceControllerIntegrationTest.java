@@ -4,8 +4,13 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.codelensx.backend.dto.WorkspaceResponseDto;
 import com.codelensx.backend.model.Role;
 import com.codelensx.backend.model.User;
+import com.codelensx.backend.model.Workspace;
+import com.codelensx.backend.model.Conversation;
+import com.codelensx.backend.model.ChatMessage;
 import com.codelensx.backend.repository.UserRepository;
 import com.codelensx.backend.repository.WorkspaceRepository;
+import com.codelensx.backend.repository.ConversationRepository;
+import com.codelensx.backend.repository.ChatMessageRepository;
 import com.codelensx.backend.security.JwtTokenProvider;
 import com.codelensx.backend.testutil.ZipTestUtils;
 import org.junit.jupiter.api.AfterEach;
@@ -56,6 +61,12 @@ public class WorkspaceControllerIntegrationTest {
     private WorkspaceRepository workspaceRepository;
 
     @Autowired
+    private ConversationRepository conversationRepository;
+
+    @Autowired
+    private ChatMessageRepository chatMessageRepository;
+
+    @Autowired
     private PasswordEncoder passwordEncoder;
 
     @Autowired
@@ -66,6 +77,8 @@ public class WorkspaceControllerIntegrationTest {
 
     @BeforeEach
     public void setup() {
+        chatMessageRepository.deleteAll();
+        conversationRepository.deleteAll();
         workspaceRepository.deleteAll();
         userRepository.deleteAll();
 
@@ -90,6 +103,8 @@ public class WorkspaceControllerIntegrationTest {
 
     @AfterEach
     public void cleanupFiles() throws IOException {
+        chatMessageRepository.deleteAll();
+        conversationRepository.deleteAll();
         workspaceRepository.deleteAll();
         userRepository.deleteAll();
 
@@ -275,5 +290,69 @@ public class WorkspaceControllerIntegrationTest {
         // Verify database and workspace directory both deleted
         assertFalse(Files.exists(workspaceDir));
         assertTrue(workspaceRepository.findAll().isEmpty());
+    }
+
+    @Test
+    public void deleteWorkspace_CascadeDeletesConversationsAndMessages() throws Exception {
+        byte[] zipBytes = ZipTestUtils.createZip(Map.of(
+                "App.java", "class App {}"
+        ));
+
+        MockMultipartFile zipFile = new MockMultipartFile(
+                "file",
+                "delete-cascade.zip",
+                "application/zip",
+                zipBytes
+        );
+
+        MvcResult result = mockMvc.perform(multipart("/api/workspaces/upload")
+                .file(zipFile)
+                .header("Authorization", "Bearer " + token))
+                .andExpect(status().isCreated())
+                .andReturn();
+
+        WorkspaceResponseDto responseDto = objectMapper.readValue(
+                result.getResponse().getContentAsString(),
+                WorkspaceResponseDto.class
+        );
+
+        Workspace workspace = workspaceRepository.findByWorkspaceId(responseDto.getWorkspaceId()).orElseThrow();
+
+        // Create active conversations and messages referencing this workspace
+        Conversation conv1 = Conversation.builder()
+                .title("Conversation 1")
+                .workspace(workspace)
+                .user(testUser)
+                .build();
+        conv1 = conversationRepository.save(conv1);
+
+        ChatMessage msg1 = ChatMessage.builder()
+                .conversation(conv1)
+                .role("USER")
+                .content("Hello assistant")
+                .build();
+        chatMessageRepository.save(msg1);
+
+        ChatMessage msg2 = ChatMessage.builder()
+                .conversation(conv1)
+                .role("ASSISTANT")
+                .content("Hello developer")
+                .build();
+        chatMessageRepository.save(msg2);
+
+        // Verify they exist
+        assertEquals(1, conversationRepository.count());
+        assertEquals(2, chatMessageRepository.count());
+
+        // Delete Workspace
+        mockMvc.perform(delete("/api/workspaces/" + responseDto.getWorkspaceId())
+                .header("Authorization", "Bearer " + token))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.success", is(true)));
+
+        // Verify that workspace, conversations, and chat messages are all cascaded deleted!
+        assertTrue(workspaceRepository.findAll().isEmpty());
+        assertEquals(0, conversationRepository.count());
+        assertEquals(0, chatMessageRepository.count());
     }
 }

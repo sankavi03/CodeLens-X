@@ -195,8 +195,8 @@ public class ProjectExplorerControllerIntegrationTest {
 
         mockMvc.perform(get("/api/workspaces/" + workspaceId + "/tree")
                         .header("Authorization", "Bearer " + ownerToken))
-                .andExpect(status().isConflict())
-                .andExpect(jsonPath("$.message", containsString("not available")));
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.root.name", is("extracted")));
     }
 
     private UUID uploadSampleWorkspace() throws Exception {

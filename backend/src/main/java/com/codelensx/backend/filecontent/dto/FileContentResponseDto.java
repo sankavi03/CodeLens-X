@@ -16,4 +16,5 @@ public class FileContentResponseDto {
     private long sizeBytes;
     private long lineCount;
     private String content;
+    private long lastModified;
 }

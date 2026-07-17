@@ -15,6 +15,7 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.util.Optional;
@@ -31,12 +32,42 @@ public class ProjectParserService {
     private final WorkspaceRepository workspaceRepository;
 
     @Transactional
+    public ProjectTree getOrBuildTree(Workspace workspace) {
+        return projectTreeCache.get(workspace.getWorkspaceId())
+                .orElseGet(() -> {
+                    Path zipPath = Paths.get(workspace.getProjectPath());
+                    Path workspaceDirectory = zipPath.getParent();
+                    Path extractedRoot = workspaceDirectory.resolve("extracted").normalize();
+                    
+                    if (!Files.exists(extractedRoot)) {
+                        extractedRoot = zipExtractor.extract(zipPath, workspaceDirectory);
+                    }
+                    
+                    ProjectTreeNode rootNode = directoryScanner.scan(extractedRoot);
+                    ProjectTree projectTree = projectTreeBuilder.build(
+                            workspace.getWorkspaceId(),
+                            extractedRoot,
+                            rootNode
+                    );
+                    projectTreeCache.put(workspace.getWorkspaceId(), projectTree);
+                    
+                    log.info("Self-healing: Rebuilt project tree cache for workspace {}", workspace.getWorkspaceId());
+                    return projectTree;
+                });
+    }
+
+    @Transactional
     public Optional<ProjectTree> parseProject(Workspace workspace) {
+        long startTime = System.currentTimeMillis();
         Workspace managedWorkspace = workspaceRepository.findById(workspace.getId())
                 .orElseThrow(() -> new ParserException("Workspace not found for parsing"));
 
         managedWorkspace.setStatus(WorkspaceStatus.PARSING);
         workspaceRepository.save(managedWorkspace);
+
+        String username = managedWorkspace.getOwner() != null ? managedWorkspace.getOwner().getUsername() : "unknown";
+        String uploadedFileName = managedWorkspace.getUploadedFileName();
+        java.util.UUID workspaceId = managedWorkspace.getWorkspaceId();
 
         try {
             Path zipPath = Paths.get(managedWorkspace.getProjectPath());
@@ -45,29 +76,26 @@ public class ProjectParserService {
             Path extractedRoot = zipExtractor.extract(zipPath, workspaceDirectory);
             ProjectTreeNode rootNode = directoryScanner.scan(extractedRoot);
             ProjectTree projectTree = projectTreeBuilder.build(
-                    managedWorkspace.getWorkspaceId(),
+                    workspaceId,
                     extractedRoot,
                     rootNode
             );
 
-            projectTreeCache.put(managedWorkspace.getWorkspaceId(), projectTree);
+            projectTreeCache.put(workspaceId, projectTree);
 
             managedWorkspace.setStatus(WorkspaceStatus.READY);
             workspaceRepository.save(managedWorkspace);
 
-            log.info("Parsed workspace {}: {} files, {} folders",
-                    managedWorkspace.getWorkspaceId(),
-                    projectTree.getTotalFiles(),
-                    projectTree.getTotalFolders());
+            long duration = System.currentTimeMillis() - startTime;
+            log.info("Operation: PARSE_WORKSPACE | WorkspaceId: {} | User: {} | File: {} | Duration: {}ms | Success: true | Files: {} | Folders: {}",
+                    workspaceId, username, uploadedFileName, duration, projectTree.getTotalFiles(), projectTree.getTotalFolders());
 
             return Optional.of(projectTree);
-        } catch (ParserException e) {
-            markFailed(managedWorkspace);
-            log.error("Parsing failed for workspace {}: {}", managedWorkspace.getWorkspaceId(), e.getMessage());
-            return Optional.empty();
         } catch (Exception e) {
             markFailed(managedWorkspace);
-            log.error("Unexpected parsing failure for workspace {}", managedWorkspace.getWorkspaceId(), e);
+            long duration = System.currentTimeMillis() - startTime;
+            log.error("Operation: PARSE_WORKSPACE | WorkspaceId: {} | User: {} | File: {} | Duration: {}ms | Success: false | Error: {}",
+                    workspaceId, username, uploadedFileName, duration, e.getMessage());
             return Optional.empty();
         }
     }

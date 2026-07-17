@@ -22,8 +22,10 @@ public class SecureFileReader {
         Path filePath = resolveSecurePath(extractRoot, fileNode.getRelativePath());
 
         long sizeBytes;
+        long lastModified;
         try {
             sizeBytes = Files.size(filePath);
+            lastModified = Files.getLastModifiedTime(filePath).toMillis();
         } catch (IOException e) {
             throw new ApiException("File not found", HttpStatus.NOT_FOUND);
         }
@@ -39,7 +41,7 @@ public class SecureFileReader {
 
         textFileValidator.validateTextContent(bytes, fileNode.getName(), fileNode.getExtension());
 
-        return new ReadResult(new String(bytes, StandardCharsets.UTF_8), sizeBytes);
+        return new ReadResult(new String(bytes, StandardCharsets.UTF_8), sizeBytes, lastModified);
     }
 
     private Path resolveSecurePath(Path extractRoot, String relativePath) {
@@ -75,6 +77,6 @@ public class SecureFileReader {
         return resolved;
     }
 
-    public record ReadResult(String content, long sizeBytes) {
+    public record ReadResult(String content, long sizeBytes, long lastModified) {
     }
 }

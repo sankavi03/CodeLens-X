@@ -17,7 +17,7 @@ interface AuthState {
   initSession: () => Promise<void>;
 }
 
-export const useAuthStore = create<AuthState>((set) => ({
+export const useAuthStore = create<AuthState>((set, get) => ({
   user: null,
   token: null,
   isAuthenticated: false,
@@ -26,7 +26,7 @@ export const useAuthStore = create<AuthState>((set) => ({
   login: async (username, password) => {
     set({ isLoading: true });
     try {
-      const response = await api.post('/api/auth/login', { username, password });
+      const response = await api.post('/api/auth/login', { usernameOrEmail: username, password });
       const { accessToken } = response.data;
       localStorage.setItem('token', accessToken);
       set({ token: accessToken, isAuthenticated: true });
@@ -51,23 +51,37 @@ export const useAuthStore = create<AuthState>((set) => ({
     }
   },
 
-  logout: () => {
-    localStorage.removeItem('token');
-    set({ user: null, token: null, isAuthenticated: false, isLoading: false });
+  logout: async () => {
+    try {
+      await api.post('/api/auth/logout');
+    } catch (error) {
+      console.warn("Backend logout request failed:", error);
+    } finally {
+      localStorage.removeItem('token');
+      set({ user: null, token: null, isAuthenticated: false, isLoading: false });
+    }
   },
 
   initSession: async () => {
+    const { isAuthenticated, user } = get();
+    if (isAuthenticated && user) {
+      set({ isLoading: false });
+      return;
+    }
+
     const token = localStorage.getItem('token');
     if (!token) {
-      set({ isAuthenticated: false, isLoading: false });
+      set({ isAuthenticated: false, isLoading: false, user: null, token: null });
       return;
     }
 
     try {
+      // Set loading, but store token first to allow headers initialization
       set({ token, isLoading: true });
       const userProfile = await api.get('/api/users/me');
       set({ user: userProfile.data, isAuthenticated: true, isLoading: false });
     } catch (error) {
+      console.error("Failed to initialize user session:", error);
       localStorage.removeItem('token');
       set({ user: null, token: null, isAuthenticated: false, isLoading: false });
     }

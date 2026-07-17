@@ -34,6 +34,7 @@ app:
     expiration-ms: 86400000 # 24 Hours
   gemini:
     api-key: ${GEMINI_API_KEY:}
-    model: gemini-1.5-flash
+    model: gemini-3.5-flash
     temperature: 0.2
+    mock-mode: ${GEMINI_MOCK_MODE:false}
 

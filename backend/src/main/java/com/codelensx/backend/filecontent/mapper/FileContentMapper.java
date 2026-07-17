@@ -9,7 +9,7 @@ import java.util.UUID;
 @Component
 public class FileContentMapper {
 
-    public FileContentResponseDto toResponse(UUID workspaceId, ProjectTreeNode node, String content, long sizeBytes) {
+    public FileContentResponseDto toResponse(UUID workspaceId, ProjectTreeNode node, String content, long sizeBytes, long lastModified) {
         return FileContentResponseDto.builder()
                 .workspaceId(workspaceId)
                 .relativePath(node.getRelativePath())
@@ -18,6 +18,7 @@ public class FileContentMapper {
                 .sizeBytes(sizeBytes)
                 .lineCount(countLines(content))
                 .content(content)
+                .lastModified(lastModified)
                 .build();
     }
 

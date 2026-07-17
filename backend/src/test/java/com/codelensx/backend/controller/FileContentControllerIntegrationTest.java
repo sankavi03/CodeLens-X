@@ -240,8 +240,8 @@ public class FileContentControllerIntegrationTest {
         mockMvc.perform(get("/api/workspaces/" + workspaceId + "/file")
                         .param("path", "README.md")
                         .header("Authorization", "Bearer " + ownerToken))
-                .andExpect(status().isConflict())
-                .andExpect(jsonPath("$.message", containsString("not available")));
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.content", containsString("Sample Project")));
     }
 
     private UUID uploadSampleWorkspace() throws Exception {

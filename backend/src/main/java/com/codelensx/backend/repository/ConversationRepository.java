@@ -14,4 +14,5 @@ import java.util.UUID;
 public interface ConversationRepository extends JpaRepository<Conversation, UUID> {
     List<Conversation> findByWorkspaceAndUserOrderByUpdatedAtDesc(Workspace workspace, User user);
     Optional<Conversation> findByIdAndUser(UUID id, User user);
+    List<Conversation> findByWorkspace(Workspace workspace);
 }

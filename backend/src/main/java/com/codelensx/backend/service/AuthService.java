@@ -62,4 +62,15 @@ public class AuthService {
                 .accessToken(jwt)
                 .build();
     }
+
+    public JwtAuthenticationResponse refreshToken(String token) {
+        String username = tokenProvider.getUsernameFromTokenEvenIfExpired(token);
+        User user = userRepository.findByUsername(username)
+                .orElseThrow(() -> new ApiException("User not found", HttpStatus.UNAUTHORIZED));
+
+        String newJwt = tokenProvider.generateTokenForUser(user.getUsername());
+        return JwtAuthenticationResponse.builder()
+                .accessToken(newJwt)
+                .build();
+    }
 }

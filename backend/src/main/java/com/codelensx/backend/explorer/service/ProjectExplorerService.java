@@ -5,10 +5,11 @@ import com.codelensx.backend.explorer.dto.ExplorerFileNodeResponseDto;
 import com.codelensx.backend.explorer.dto.ExplorerFolderNodeResponseDto;
 import com.codelensx.backend.explorer.dto.ExplorerTreeResponseDto;
 import com.codelensx.backend.explorer.mapper.ProjectExplorerMapper;
-import com.codelensx.backend.parser.cache.ProjectTreeCache;
+import com.codelensx.backend.model.Workspace;
 import com.codelensx.backend.parser.model.NodeType;
 import com.codelensx.backend.parser.model.ProjectTree;
 import com.codelensx.backend.parser.model.ProjectTreeNode;
+import com.codelensx.backend.parser.service.ProjectParserService;
 import com.codelensx.backend.parser.util.ProjectTreePathUtils;
 import com.codelensx.backend.service.WorkspaceAccessValidator;
 import lombok.RequiredArgsConstructor;
@@ -23,20 +24,20 @@ import java.util.UUID;
 public class ProjectExplorerService {
 
     private final WorkspaceAccessValidator workspaceAccessValidator;
-    private final ProjectTreeCache projectTreeCache;
     private final ProjectExplorerMapper projectExplorerMapper;
+    private final ProjectParserService projectParserService;
 
     @Transactional(readOnly = true)
     public ExplorerTreeResponseDto getProjectTree(UUID workspaceId, String username) {
-        workspaceAccessValidator.validateAccess(workspaceId, username);
-        ProjectTree projectTree = getCachedTree(workspaceId);
+        Workspace workspace = workspaceAccessValidator.validateAccess(workspaceId, username);
+        ProjectTree projectTree = projectParserService.getOrBuildTree(workspace);
         return projectExplorerMapper.toTreeResponse(projectTree);
     }
 
     @Transactional(readOnly = true)
     public Object getProjectNode(UUID workspaceId, String path, String username) {
-        workspaceAccessValidator.validateAccess(workspaceId, username);
-        ProjectTree projectTree = getCachedTree(workspaceId);
+        Workspace workspace = workspaceAccessValidator.validateAccess(workspaceId, username);
+        ProjectTree projectTree = projectParserService.getOrBuildTree(workspace);
 
         String normalizedPath = ProjectTreePathUtils.normalizePath(path);
         ProjectTreePathUtils.validatePathFormat(normalizedPath);
@@ -51,12 +52,5 @@ public class ProjectExplorerService {
         }
 
         return projectExplorerMapper.toFileNodeResponse(node);
-    }
-
-    private ProjectTree getCachedTree(UUID workspaceId) {
-        return projectTreeCache.get(workspaceId)
-                .orElseThrow(() -> new ApiException(
-                        "Parsed project tree is not available for this workspace",
-                        HttpStatus.CONFLICT));
     }
 }

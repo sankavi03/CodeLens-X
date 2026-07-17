@@ -12,19 +12,56 @@ import java.security.NoSuchAlgorithmException;
 import java.util.Optional;
 
 @Service
-@RequiredArgsConstructor
 @Slf4j
 public class AiResponseCacheService {
 
     private final AiResponseCacheRepository cacheRepository;
+    private final int cacheTtlDays;
+
+    public AiResponseCacheService(
+            AiResponseCacheRepository cacheRepository,
+            @org.springframework.beans.factory.annotation.Value("${app.gemini.cache-ttl-days:7}") int cacheTtlDays) {
+        this.cacheRepository = cacheRepository;
+        this.cacheTtlDays = cacheTtlDays;
+    }
 
     public Optional<String> get(String systemInstruction, String prompt) {
         String cacheKey = calculateHash(systemInstruction, prompt);
-        return cacheRepository.findByCacheKey(cacheKey)
-                .map(AiResponseCache::getResponseText);
+        Optional<AiResponseCache> cached = cacheRepository.findByCacheKey(cacheKey);
+        if (cached.isPresent()) {
+            AiResponseCache entry = cached.get();
+            
+            // Check if stale
+            if (entry.getCreatedAt() != null && entry.getCreatedAt().plusDays(cacheTtlDays).isBefore(java.time.LocalDateTime.now())) {
+                log.info("Detected stale cached response (created at {}). Evicting from cache key {}", entry.getCreatedAt(), cacheKey);
+                try {
+                    cacheRepository.delete(entry);
+                } catch (Exception e) {
+                    log.warn("Failed to evict stale response from cache: {}", e.getMessage());
+                }
+                return Optional.empty();
+            }
+
+            String text = entry.getResponseText();
+            if (isMockResponse(text)) {
+                log.info("Detected cached mock response. Evicting from cache key {}", cacheKey);
+                try {
+                    cacheRepository.delete(entry);
+                } catch (Exception e) {
+                    log.warn("Failed to evict mock response from cache: {}", e.getMessage());
+                }
+                return Optional.empty();
+            }
+            return Optional.of(text);
+        }
+        return Optional.empty();
     }
 
     public void put(String systemInstruction, String prompt, String responseText) {
+        if (isMockResponse(responseText)) {
+            log.debug("Skipping caching of mock response");
+            return;
+        }
         String cacheKey = calculateHash(systemInstruction, prompt);
         // Avoid duplicate entry issue
         if (cacheRepository.findByCacheKey(cacheKey).isPresent()) {
@@ -40,6 +77,12 @@ public class AiResponseCacheService {
         } catch (Exception e) {
             log.warn("Failed to save AI response in cache: {}", e.getMessage());
         }
+    }
+
+    private boolean isMockResponse(String text) {
+        if (text == null) return false;
+        String lower = text.toLowerCase();
+        return lower.contains("gemini_api_key") || lower.contains("(mock)") || lower.contains("mock response") || lower.contains("assistant response");
     }
 
     private String calculateHash(String systemInstruction, String prompt) {

@@ -6,6 +6,8 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
+import org.springframework.web.bind.annotation.PutMapping;
+import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
@@ -28,6 +30,21 @@ public class FileContentController {
         FileContentResponseDto response = fileContentService.getFileContent(
                 workspaceId,
                 path,
+                principal.getName());
+        return ResponseEntity.ok(response);
+    }
+
+    @PutMapping("/file")
+    public ResponseEntity<FileContentResponseDto> saveFileContent(
+            @PathVariable UUID workspaceId,
+            @RequestParam("path") String path,
+            @RequestBody com.codelensx.backend.filecontent.dto.FileSaveRequestDto requestDto,
+            Principal principal) {
+        FileContentResponseDto response = fileContentService.saveFileContent(
+                workspaceId,
+                path,
+                requestDto.getContent(),
+                requestDto.getLastModified(),
                 principal.getName());
         return ResponseEntity.ok(response);
     }
