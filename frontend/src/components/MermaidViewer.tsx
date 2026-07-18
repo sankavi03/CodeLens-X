@@ -7,9 +7,10 @@ mermaid.initialize({
   startOnLoad: false,
   theme: 'dark',
   securityLevel: 'loose',
+  htmlLabels: false,
   flowchart: {
     useMaxWidth: false,
-    htmlLabels: true,
+    htmlLabels: false,
   }
 });
 
@@ -101,65 +102,138 @@ export const MermaidViewer: React.FC<MermaidViewerProps> = ({ chartCode }) => {
     setPosition({ x: 0, y: 0 });
   };
 
+  const getFormattedFilename = (ext: 'png' | 'svg') => {
+    const now = new Date();
+    const year = now.getFullYear();
+    const month = String(now.getMonth() + 1).padStart(2, '0');
+    const day = String(now.getDate()).padStart(2, '0');
+    const hours = String(now.getHours()).padStart(2, '0');
+    const minutes = String(now.getMinutes()).padStart(2, '0');
+    const seconds = String(now.getSeconds()).padStart(2, '0');
+    return `architecture-diagram-${year}-${month}-${day}-${hours}${minutes}${seconds}.${ext}`;
+  };
+
   const handleExportSVG = () => {
     if (!svgContent) return;
     try {
-      const blob = new Blob([svgContent], { type: 'image/svg+xml' });
+      const blob = new Blob([svgContent], { type: 'image/svg+xml;charset=utf-8' });
       const url = URL.createObjectURL(blob);
       const link = document.createElement('a');
       link.href = url;
-      link.download = 'architecture_diagram.svg';
+      link.download = getFormattedFilename('svg');
       document.body.appendChild(link);
       link.click();
       document.body.removeChild(link);
       URL.revokeObjectURL(url);
       addToast('SVG exported successfully!', 'success');
-    } catch {
+    } catch (err) {
+      console.error('SVG export failed:', err);
       addToast('Failed to export SVG.', 'error');
     }
   };
 
   const handleExportPNG = () => {
-    if (!svgContent) return;
+    console.log("=== STARTING PNG EXPORT DEBUGGING ===");
+    const svgElement = svgWrapperRef.current?.querySelector('svg');
+    if (!svgElement) {
+      console.warn("No SVG element found in DOM inside svgWrapperRef");
+      addToast('No SVG diagram found to export.', 'error');
+      return;
+    }
+
     try {
-      const parser = new DOMParser();
-      const doc = parser.parseFromString(svgContent, 'image/svg+xml');
-      const svgElement = doc.documentElement as unknown as SVGSVGElement;
+      console.log("Found SVG element in DOM. TagName:", svgElement.tagName);
       
-      const width = svgElement.viewBox?.baseVal?.width || 800;
-      const height = svgElement.viewBox?.baseVal?.height || 600;
+      // Clone the SVG element from the DOM
+      const clonedSvg = svgElement.cloneNode(true) as SVGSVGElement;
       
-      const svgString = new XMLSerializer().serializeToString(svgElement);
+      // Parse viewBox for width and height safely
+      let width = 800;
+      let height = 600;
+      const viewBoxAttr = clonedSvg.getAttribute('viewBox');
+      console.log("Parsed viewBox attribute value:", viewBoxAttr);
+
+      if (viewBoxAttr) {
+        const parts = viewBoxAttr.split(/\s+/);
+        if (parts.length === 4) {
+          width = parseFloat(parts[2]) || 800;
+          height = parseFloat(parts[3]) || 600;
+        }
+      } else {
+        const wAttr = clonedSvg.getAttribute('width');
+        const hAttr = clonedSvg.getAttribute('height');
+        if (wAttr) width = parseFloat(wAttr) || 800;
+        if (hAttr) height = parseFloat(hAttr) || 600;
+      }
+      console.log("Determined Dimensions - Width:", width, "Height:", height);
+      
+      // Setup absolute dimensions and clear max-width constraints for clean export bounds
+      clonedSvg.setAttribute('width', width.toString());
+      clonedSvg.setAttribute('height', height.toString());
+      clonedSvg.style.width = width + 'px';
+      clonedSvg.style.height = height + 'px';
+      clonedSvg.style.maxWidth = 'none';
+      
+      if (!clonedSvg.getAttribute('xmlns')) {
+        clonedSvg.setAttribute('xmlns', 'http://www.w3.org/2000/svg');
+      }
+
+      const svgString = new XMLSerializer().serializeToString(clonedSvg);
+      console.log("Serialized SVG string length:", svgString.length);
+      console.log("Serialized SVG preview:", svgString.substring(0, 300));
+
       const svgBlob = new Blob([svgString], { type: 'image/svg+xml;charset=utf-8' });
       const DOMURL = window.URL || window.webkitURL || window;
       const url = DOMURL.createObjectURL(svgBlob);
+      console.log("Generated Blob URL:", url);
       
       const image = new Image();
       image.onload = () => {
-        const canvas = document.createElement('canvas');
-        canvas.width = width * 2; // high resolution
-        canvas.height = height * 2;
-        const context = canvas.getContext('2d');
-        if (context) {
-          context.fillStyle = '#07090e'; // dark background
-          context.fillRect(0, 0, canvas.width, canvas.height);
-          context.drawImage(image, 0, 0, canvas.width, canvas.height);
-          
-          const pngUrl = canvas.toDataURL('image/png');
-          const link = document.createElement('a');
-          link.href = pngUrl;
-          link.download = 'architecture_diagram.png';
-          document.body.appendChild(link);
-          link.click();
-          document.body.removeChild(link);
-          addToast('PNG exported successfully!', 'success');
-        } else {
-          addToast('Failed to create 2D canvas context.', 'error');
+        console.log("Image onload fired successfully!");
+        try {
+          const canvas = document.createElement('canvas');
+          canvas.width = width * 2; // high resolution export
+          canvas.height = height * 2;
+          const context = canvas.getContext('2d');
+          if (context) {
+            console.log("Created 2D canvas context successfully.");
+            context.fillStyle = '#07090e'; // dark theme background
+            context.fillRect(0, 0, canvas.width, canvas.height);
+            context.drawImage(image, 0, 0, canvas.width, canvas.height);
+            console.log("drawImage executed successfully.");
+            
+            const pngUrl = canvas.toDataURL('image/png');
+            const link = document.createElement('a');
+            link.href = pngUrl;
+            link.download = getFormattedFilename('png');
+            document.body.appendChild(link);
+            link.click();
+            document.body.removeChild(link);
+            console.log("PNG download triggered.");
+            addToast('PNG exported successfully!', 'success');
+          } else {
+            console.error("Failed to create 2D canvas context.");
+            addToast('Failed to create 2D canvas context.', 'error');
+          }
+        } catch (err) {
+          console.error('Canvas export error inside onload:', err);
+          addToast('Failed to generate PNG image.', 'error');
+        } finally {
+          DOMURL.revokeObjectURL(url);
         }
+      };
+      
+      image.onerror = (evt) => {
+        console.error('Image element failed to load. onerror event details:', evt);
+        console.log("Image source attempted:", image.src ? image.src.substring(0, 200) : "null");
+        console.log("Image properties - complete:", image.complete, "naturalWidth:", image.naturalWidth);
+        addToast('Failed to load diagram render content.', 'error');
         DOMURL.revokeObjectURL(url);
       };
+      
       image.src = url;
-    } catch {
+    } catch (err) {
+      console.error('PNG export initialization failed:', err);
       addToast('Failed to export PNG.', 'error');
     }
   };

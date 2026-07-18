@@ -20,6 +20,9 @@ import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.util.Optional;
 
+import com.codelensx.backend.exception.ApiException;
+import org.springframework.http.HttpStatus;
+
 @Service
 @RequiredArgsConstructor
 @Slf4j
@@ -37,22 +40,44 @@ public class ProjectParserService {
                 .orElseGet(() -> {
                     Path zipPath = Paths.get(workspace.getProjectPath());
                     Path workspaceDirectory = zipPath.getParent();
-                    Path extractedRoot = workspaceDirectory.resolve("extracted").normalize();
+                    Path extractedRoot = workspaceDirectory != null 
+                            ? workspaceDirectory.resolve("extracted").normalize()
+                            : null;
                     
+                    if (extractedRoot == null) {
+                        markFailed(workspace);
+                        throw new ApiException("Workspace files path is invalid. Please delete and re-upload this project.", HttpStatus.NOT_FOUND);
+                    }
+
                     if (!Files.exists(extractedRoot)) {
-                        extractedRoot = zipExtractor.extract(zipPath, workspaceDirectory);
+                        if (!Files.exists(zipPath)) {
+                            log.error("Self-healing failed: ZIP file and extracted directory both missing for workspace {}", workspace.getWorkspaceId());
+                            markFailed(workspace);
+                            throw new ApiException("Workspace files are missing on disk. Please delete and re-upload this project.", HttpStatus.NOT_FOUND);
+                        }
+                        try {
+                            extractedRoot = zipExtractor.extract(zipPath, workspaceDirectory);
+                        } catch (Exception e) {
+                            markFailed(workspace);
+                            throw new ApiException("Failed to self-heal extract workspace files: " + e.getMessage(), HttpStatus.INTERNAL_SERVER_ERROR);
+                        }
                     }
                     
-                    ProjectTreeNode rootNode = directoryScanner.scan(extractedRoot);
-                    ProjectTree projectTree = projectTreeBuilder.build(
-                            workspace.getWorkspaceId(),
-                            extractedRoot,
-                            rootNode
-                    );
-                    projectTreeCache.put(workspace.getWorkspaceId(), projectTree);
-                    
-                    log.info("Self-healing: Rebuilt project tree cache for workspace {}", workspace.getWorkspaceId());
-                    return projectTree;
+                    try {
+                        ProjectTreeNode rootNode = directoryScanner.scan(extractedRoot);
+                        ProjectTree projectTree = projectTreeBuilder.build(
+                                workspace.getWorkspaceId(),
+                                extractedRoot,
+                                rootNode
+                        );
+                        projectTreeCache.put(workspace.getWorkspaceId(), projectTree);
+                        
+                        log.info("Self-healing: Rebuilt project tree cache for workspace {}", workspace.getWorkspaceId());
+                        return projectTree;
+                    } catch (Exception e) {
+                        markFailed(workspace);
+                        throw new ApiException("Failed to scan workspace directory: " + e.getMessage(), HttpStatus.INTERNAL_SERVER_ERROR);
+                    }
                 });
     }
 

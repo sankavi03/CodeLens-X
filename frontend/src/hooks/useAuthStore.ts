@@ -4,6 +4,9 @@ import api from '../services/api';
 interface User {
   username: string;
   roles: string[];
+  email?: string;
+  displayName?: string;
+  profileImage?: string;
 }
 
 interface AuthState {
@@ -12,6 +15,7 @@ interface AuthState {
   isAuthenticated: boolean;
   isLoading: boolean;
   login: (username: string, password: string) => Promise<void>;
+  googleLogin: (email: string, displayName: string, profileImage: string, googleIdToken: string) => Promise<void>;
   register: (username: string, email: string, password: string) => Promise<void>;
   logout: () => void;
   initSession: () => Promise<void>;
@@ -31,7 +35,27 @@ export const useAuthStore = create<AuthState>((set, get) => ({
       localStorage.setItem('token', accessToken);
       set({ token: accessToken, isAuthenticated: true });
       
-      // Fetch user profile
+      const userProfile = await api.get('/api/users/me');
+      set({ user: userProfile.data, isLoading: false });
+    } catch (error) {
+      set({ isLoading: false });
+      throw error;
+    }
+  },
+
+  googleLogin: async (email, displayName, profileImage, googleIdToken) => {
+    set({ isLoading: true });
+    try {
+      const response = await api.post('/api/auth/google', {
+        email,
+        displayName,
+        profileImage,
+        googleIdToken
+      });
+      const { accessToken } = response.data;
+      localStorage.setItem('token', accessToken);
+      set({ token: accessToken, isAuthenticated: true });
+      
       const userProfile = await api.get('/api/users/me');
       set({ user: userProfile.data, isLoading: false });
     } catch (error) {
@@ -76,7 +100,6 @@ export const useAuthStore = create<AuthState>((set, get) => ({
     }
 
     try {
-      // Set loading, but store token first to allow headers initialization
       set({ token, isLoading: true });
       const userProfile = await api.get('/api/users/me');
       set({ user: userProfile.data, isAuthenticated: true, isLoading: false });

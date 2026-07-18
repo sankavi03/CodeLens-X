@@ -47,4 +47,22 @@ public class AuthController {
     public ResponseEntity<ApiResponse> logoutUser() {
         return ResponseEntity.ok(new ApiResponse(true, "Logout successful"));
     }
+
+    @GetMapping("/check-username")
+    public ResponseEntity<ApiResponse> checkUsername(@RequestParam String username) {
+        boolean exists = authService.existsByUsername(username);
+        return ResponseEntity.ok(new ApiResponse(!exists, exists ? "Username already taken" : "Username available"));
+    }
+
+    @GetMapping("/check-email")
+    public ResponseEntity<ApiResponse> checkEmail(@RequestParam String email) {
+        boolean exists = authService.existsByEmail(email);
+        return ResponseEntity.ok(new ApiResponse(!exists, exists ? "Email already registered" : "Email available"));
+    }
+
+    @PostMapping("/google")
+    public ResponseEntity<JwtAuthenticationResponse> googleLogin(@Valid @RequestBody com.codelensx.backend.dto.GoogleLoginRequest request) {
+        JwtAuthenticationResponse jwtResponse = authService.googleLogin(request);
+        return ResponseEntity.ok(jwtResponse);
+    }
 }

@@ -24,8 +24,14 @@ public class User {
     @Column(unique = true, nullable = false, length = 100)
     private String email;
 
-    @Column(nullable = false)
+    @Column(nullable = true)
     private String password;
+
+    @Column(name = "profile_image", length = 500, nullable = true)
+    private String profileImage;
+
+    @Column(name = "display_name", length = 100, nullable = true)
+    private String displayName;
 
     @Enumerated(EnumType.STRING)
     @Column(nullable = false, length = 20)

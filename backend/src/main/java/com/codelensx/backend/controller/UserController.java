@@ -1,5 +1,7 @@
 package com.codelensx.backend.controller;
 
+import com.codelensx.backend.repository.UserRepository;
+import lombok.RequiredArgsConstructor;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.security.core.userdetails.UserDetails;
@@ -13,7 +15,10 @@ import java.util.stream.Collectors;
 
 @RestController
 @RequestMapping("/api/users")
+@RequiredArgsConstructor
 public class UserController {
+
+    private final UserRepository userRepository;
 
     @GetMapping("/me")
     public ResponseEntity<Map<String, Object>> getCurrentUser(@AuthenticationPrincipal UserDetails userDetails) {
@@ -22,6 +27,13 @@ public class UserController {
         response.put("roles", userDetails.getAuthorities().stream()
                 .map(grantedAuthority -> grantedAuthority.getAuthority())
                 .collect(Collectors.toList()));
+
+        userRepository.findByUsername(userDetails.getUsername()).ifPresent(user -> {
+            response.put("email", user.getEmail());
+            response.put("displayName", user.getDisplayName());
+            response.put("profileImage", user.getProfileImage());
+        });
+
         return ResponseEntity.ok(response);
     }
 }
